@@ -1,6 +1,6 @@
-# Route-A EDL 训练对比 Demo 说明
+# EDL 训练对比
 
-## 1. 你现在可以直接运行什么
+## 1. 概述
 
 核心脚本：
 - `edl_routeA_demo.py`
@@ -16,7 +16,7 @@
 
 ---
 
-## 2. 训练与评估设置（当前 demo）
+## 2. 训练与评估设置
 
 1. 数据：二维多类高斯数据（4 类）
 2. 训练集：小样本 + 标签噪声（20%）
@@ -31,9 +31,9 @@ EDL 预测：
 
 ---
 
-## 3. 这个对比到底是在什么问题上做的？
+## 3. 问题定义
 
-这是一个“分类 + 不确定性 + OOD 检测”的综合对比，不是只看分类准确率。
+一个“分类 + 不确定性 + OOD 检测”的综合对比，不只看分类准确率。
 
 1. `ID 分类任务`：  
 在 4 类二维数据上做普通分类（样本来自已知分布）。
@@ -52,13 +52,13 @@ EDL 预测：
 
 ---
 
-## 4. 指标到底在看什么（通俗解释）
+## 4. 指标
 
 `结论先看方向`：
 - `Accuracy`、`OOD-AUROC`：越大越好。  
 - `NLL`、`Brier`、`ECE`、`Loss`：越小越好。
 
-逐个解释：
+解释：
 
 1. `Accuracy`（准确率）  
 就是“分对了多少比例”。最直观，但只告诉你对错，不告诉你置信度是否靠谱。
@@ -103,7 +103,7 @@ ECE 越小，说明模型越“诚实”。
 python3 edl_routeA_demo.py --seeds 0 1 2 --epochs 120 --out-dir demo_results
 ```
 
-如果你机器慢一点，可以先快速验证：
+可以先快速验证：
 
 ```bash
 python3 edl_routeA_demo.py --seeds 0 --epochs 40 --out-dir demo_results_quick
@@ -130,7 +130,7 @@ python3 edl_routeA_demo.py --seeds 0 --epochs 40 --out-dir demo_results_quick
 
 ---
 
-## 7. 本次已跑出的结果（seeds=0,1,2; epochs=120）
+## 7. 结果（seeds=0,1,2; epochs=120）
 
 | Method | Accuracy | NLL | Brier | ECE | OOD-AUROC |
 |---|---:|---:|---:|---:|---:|
@@ -145,7 +145,7 @@ python3 edl_routeA_demo.py --seeds 0 --epochs 40 --out-dir demo_results_quick
 
 ---
 
-## 8. 生成 Seaborn SCI 风格可视化
+## 8. 输出结果
 
 先确认已安装 `requirements_demo.txt`，然后运行：
 
@@ -181,7 +181,7 @@ python3 plot_routeA_sci.py --results-dir demo_results --out-dir demo_results/fig
 
 ---
 
-## 9. 你可以优先调哪些参数
+## 9. 调参
 
 1. `--edl-reg-max`：增大通常会提升不确定性约束，但过大可能伤 Accuracy。  
 2. `--edl-anneal-ratio`：决定 KL 何时拉满，过快会训练不稳。  

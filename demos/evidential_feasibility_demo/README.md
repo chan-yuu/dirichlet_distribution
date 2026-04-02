@@ -1,6 +1,6 @@
-# Evidential Feasibility Demo（纯 Python）
+# Evidential 可行性
 
-## 1. 这个 demo 到底要验证什么（完整目标）
+## 1. 完整目标
 
 这个 demo 不追求复杂场景还原（暂不接 NavSim），只做“可行性验证 + 数据说话”。
 
@@ -19,9 +19,8 @@
 安全提升时，效率（progress）是否保持在可接受范围。
 
 5. **是否具备下一阶段价值**  
-如果上述 1~4 成立，才值得进入更复杂系统（如 NavSim / RL 微调）。
+如果上述 1~4 成立，才值得进入更复杂系统（ NavSim / RL 微调）。
 
-一句话：
 > 先证明“信号可用 + 门控有收益”，再谈大系统接入。
 
 ---
@@ -39,7 +38,7 @@
 - 若选择 Aggressive 且 `y_safe=0`：collision 高、progress 很低。  
 - Conservative：collision 低但 progress 保守。
 
-这就是“规划里激进/保守权衡”的最小抽象。
+“规划里激进/保守权衡”的抽象。
 
 ---
 
@@ -99,7 +98,7 @@ python3 run_evidential_feasibility_demo.py --seeds 0 1 2 --epochs 90 --out-dir o
 
 ---
 
-## 7. 如何判读这个 demo 是否“通过”
+## 7. 是否“通过”
 
 建议使用以下判据（可按你团队标准微调）：
 
@@ -124,10 +123,11 @@ python3 run_evidential_feasibility_demo.py --seeds 0 1 2 --epochs 90 --out-dir o
 
 ## 9. 结果图（PNG）
 
+ID Frontier：
 ![ID Frontier](./figure/frontier_id.png)
-
+OOD Frontier：
 ![OOD Frontier](./figure/frontier_ood.png)
-
+Policy Collision Rate：
 ![Policy Collision Rate](./figure/policy_collision_rate.png)
-
+Policy Progress：
 ![Policy Progress](./figure/policy_progress.png)
