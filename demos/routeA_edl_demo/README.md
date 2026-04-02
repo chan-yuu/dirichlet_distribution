@@ -187,3 +187,37 @@ python3 plot_routeA_sci.py --results-dir demo_results --out-dir demo_results/fig
 2. `--edl-anneal-ratio`：决定 KL 何时拉满，过快会训练不稳。  
 3. `--edl-ce-aux-weight`：帮助训练前期稳定分类边界。  
 4. `--label-smoothing`：可作为传统基线调参对照。
+
+---
+
+## 10. 结果图（PNG）
+
+### 10.1 训练曲线（Train）
+
+![Train Loss](./figure/learning_curve_train_loss_sci.png)
+
+![Train Accuracy](./figure/learning_curve_train_accuracy_sci.png)
+
+![Train NLL](./figure/learning_curve_train_nll_sci.png)
+
+![Train ECE](./figure/learning_curve_train_ece_sci.png)
+
+### 10.2 验证曲线（Validation）
+
+![Validation Accuracy](./figure/learning_curve_val_accuracy_sci.png)
+
+![Validation NLL](./figure/learning_curve_val_nll_sci.png)
+
+![Validation ECE](./figure/learning_curve_val_ece_sci.png)
+
+![Validation OOD AUROC](./figure/learning_curve_val_ood_auroc_sci.png)
+
+### 10.3 最终指标柱状图
+
+![Final Accuracy](./figure/final_metric_accuracy_sci.png)
+
+![Final NLL](./figure/final_metric_nll_sci.png)
+
+![Final ECE](./figure/final_metric_ece_sci.png)
+
+![Final OOD AUROC](./figure/final_metric_ood_auroc_sci.png)

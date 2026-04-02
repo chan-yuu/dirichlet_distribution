@@ -120,3 +120,14 @@ python3 run_evidential_feasibility_demo.py --seeds 0 1 2 --epochs 90 --out-dir o
 2. OOD 由合成分布构造，目的是验证机制而非复现真实道路统计。  
 3. 后续进入 NavSim 时，需要替换为真实 closed-loop 指标与场景分桶。
 
+---
+
+## 9. 结果图（PNG）
+
+![ID Frontier](./figure/frontier_id.png)
+
+![OOD Frontier](./figure/frontier_ood.png)
+
+![Policy Collision Rate](./figure/policy_collision_rate.png)
+
+![Policy Progress](./figure/policy_progress.png)
