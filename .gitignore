@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Demo outputs (not tracked)
+outputs/
+outputs_*/
+demo_results/
+demo_results_*/
+figures/
+workspace/
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
