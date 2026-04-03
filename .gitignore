@@ -4,6 +4,9 @@ __pycache__/
 *.pyo
 *.pyd
 
+# Jupyter
+.ipynb_checkpoints/
+
 # Demo outputs (not tracked)
 outputs/
 outputs_*/
