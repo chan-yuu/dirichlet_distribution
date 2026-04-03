@@ -432,7 +432,7 @@ def cmd_stash(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
-def cmd_quickpush(_: argparse.Namespace) -> None:
+def quickpush_flow() -> tuple[bool, str]:
     print("== Quick Push 向导 ==")
     run_git(["status"])
     print()
@@ -442,24 +442,21 @@ def cmd_quickpush(_: argparse.Namespace) -> None:
         run_git(["add", "-A"])
     elif mode == "2":
         if not stage_interactive():
-            sys.exit(1)
+            return False, "未暂存任何文件。"
     else:
-        print("已取消。")
-        return
+        return False, "已取消。"
 
     if run_git(["diff", "--cached", "--quiet"], check=False).returncode == 0:
-        print("没有已暂存改动，退出。")
-        return
+        return False, "没有已暂存改动，退出。"
 
     run_git(["diff", "--cached", "--stat"])
     if not ask_yes_no("确认提交这些改动吗？", default_no=True):
-        print("已取消。")
-        return
+        return False, "已取消提交。"
 
     msg = normalize_commit_message(input("请输入 commit message: ").strip())
     if not msg:
         print("[ERROR] commit message 不能为空。", file=sys.stderr)
-        sys.exit(1)
+        return False, "[ERROR] commit message 不能为空。"
     run_git(["commit", "-m", msg])
 
     up = get_upstream()
@@ -475,12 +472,24 @@ def cmd_quickpush(_: argparse.Namespace) -> None:
         push_cmd = ["push", "-u", remote, branch]
 
     print("将执行:", "git " + " ".join(push_cmd))
-    if not ask_yes_no("确认推送吗？", default_no=True):
-        print("已提交到本地，未推送。")
-        return
+    if not ask_yes_no("确认推送吗？", default_no=False):
+        return False, "已提交到本地，未推送。"
 
-    run_git(push_cmd)
-    print("推送完成。")
+    proc = run_git(push_cmd, check=False, capture=True)
+    out = (proc.stdout or "").strip()
+    err = (proc.stderr or "").strip()
+    detail = "\n".join([x for x in (out, err) if x]).strip()
+    if proc.returncode != 0:
+        return False, "推送失败。\n" + (detail or "(无输出)")
+    return True, "推送完成。\n" + (detail or "(无输出)")
+
+
+def cmd_quickpush(_: argparse.Namespace) -> None:
+    ok, message = quickpush_flow()
+    if ok:
+        print(message)
+    else:
+        print(message)
 
 
 def run_git_capture_text(args: Sequence[str]) -> tuple[bool, str]:
@@ -572,10 +581,11 @@ def cmd_menu(_: argparse.Namespace) -> None:
             elif choice_idx == 5:
                 clear_screen()
                 print_panel("quickpush")
-                cmd_quickpush(argparse.Namespace())
+                ok, msg = quickpush_flow()
                 last_title = "quickpush"
                 _, out = run_git_capture_text(["status", "--short", "--branch"])
-                last_output = "quickpush 已执行。\n" + out
+                prefix = "执行成功" if ok else "执行结束（未完成推送）"
+                last_output = f"{prefix}\n{msg}\n\n{out}"
             elif choice_idx == 6:
                 ok, out = run_git_capture_text(["pull", "--rebase"])
                 last_title = "pull --rebase"
