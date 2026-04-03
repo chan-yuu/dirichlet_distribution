@@ -120,8 +120,16 @@ def print_panel(title: str, body: str | None = None) -> None:
         print(line)
 
 
-def wait_back_to_menu() -> None:
-    input("\n按回车返回菜单...")
+def normalize_commit_message(raw: str) -> str:
+    msg = raw.strip()
+    if len(msg) >= 2 and ((msg[0] == msg[-1] == '"') or (msg[0] == msg[-1] == "'")):
+        msg = msg[1:-1].strip()
+    return msg
+
+
+def has_staged_changes() -> bool:
+    # git diff --cached --quiet: 0 => no staged changes, 1 => has staged changes
+    return run_git(["diff", "--cached", "--quiet"], check=False).returncode != 0
 
 
 def read_key() -> str:
@@ -348,10 +356,13 @@ def cmd_add(args: argparse.Namespace) -> None:
 
 
 def cmd_commit(args: argparse.Namespace) -> None:
-    msg = args.message.strip()
+    msg = normalize_commit_message(args.message)
     if not msg:
         print("[ERROR] commit message 不能为空。", file=sys.stderr)
         sys.exit(1)
+    if not has_staged_changes():
+        print("没有已暂存改动，跳过 commit。")
+        return
     run_git(["commit", "-m", msg])
 
 
@@ -445,7 +456,7 @@ def cmd_quickpush(_: argparse.Namespace) -> None:
         print("已取消。")
         return
 
-    msg = input("请输入 commit message: ").strip()
+    msg = normalize_commit_message(input("请输入 commit message: ").strip())
     if not msg:
         print("[ERROR] commit message 不能为空。", file=sys.stderr)
         sys.exit(1)
@@ -472,6 +483,22 @@ def cmd_quickpush(_: argparse.Namespace) -> None:
     print("推送完成。")
 
 
+def run_git_capture_text(args: Sequence[str]) -> tuple[bool, str]:
+    proc = run_git(args, check=False, capture=True)
+    out = (proc.stdout or "").rstrip()
+    err = (proc.stderr or "").rstrip()
+    parts = [x for x in (out, err) if x]
+    text = "\n".join(parts) if parts else "(无输出)"
+    return proc.returncode == 0, text
+
+
+def tail_lines(text: str, max_lines: int = 20) -> str:
+    lines = text.splitlines()
+    if len(lines) <= max_lines:
+        return text
+    return "\n".join(["...(已折叠前文)...", *lines[-max_lines:]])
+
+
 def cmd_menu(_: argparse.Namespace) -> None:
     menu_items = [
         "status",
@@ -487,99 +514,118 @@ def cmd_menu(_: argparse.Namespace) -> None:
         "切换目标仓库",
         "exit",
     ]
+    last_title = "就绪"
+    last_output = "使用 ↑/↓ 选择功能，Enter 执行。"
 
     while True:
-        choice_idx = select_with_arrows("Git CLI 菜单", menu_items, "提示: 在任意结果页按回车返回菜单")
+        hint = f"最近结果: {last_title}\n{tail_lines(last_output)}"
+        choice_idx = select_with_arrows("Git CLI 菜单", menu_items, hint)
 
         try:
             if choice_idx == 0:
-                clear_screen()
-                print_panel("status")
-                run_git(["status"])
-                wait_back_to_menu()
+                ok, out = run_git_capture_text(["status"])
+                last_title = "status"
+                last_output = out if ok else f"[ERROR]\n{out}"
             elif choice_idx == 1:
-                clear_screen()
-                print_panel("branch -a")
-                run_git(["branch", "-a"])
-                wait_back_to_menu()
+                ok, out = run_git_capture_text(["branch", "-a"])
+                last_title = "branch -a"
+                last_output = out if ok else f"[ERROR]\n{out}"
             elif choice_idx == 2:
                 clear_screen()
                 print_panel("switch/create branch")
                 name = input("分支名: ").strip()
+                if not name:
+                    last_title = "switch/create branch"
+                    last_output = "已取消：分支名为空。"
+                    continue
                 create = ask_yes_no("是否新建分支并切换？", default_no=False)
                 if create:
-                    run_git(["switch", "-c", name])
+                    ok, out = run_git_capture_text(["switch", "-c", name])
                 else:
-                    run_git(["switch", name])
-                wait_back_to_menu()
+                    ok, out = run_git_capture_text(["switch", name])
+                last_title = "switch/create branch"
+                last_output = out if ok else f"[ERROR]\n{out}"
             elif choice_idx == 3:
                 clear_screen()
                 print_panel("add (interactive)")
-                stage_interactive()
-                wait_back_to_menu()
+                ok = stage_interactive()
+                last_title = "add (interactive)"
+                if not ok:
+                    last_output = "未暂存任何文件。"
+                else:
+                    _, out = run_git_capture_text(["diff", "--cached", "--name-only"])
+                    last_output = "已暂存文件:\n" + (out if out.strip() else "(无)")
             elif choice_idx == 4:
                 clear_screen()
                 print_panel("commit")
-                msg = input("commit message: ").strip()
-                if msg:
-                    run_git(["commit", "-m", msg])
+                msg = normalize_commit_message(input("commit message: ").strip())
+                if not msg:
+                    last_title = "commit"
+                    last_output = "已取消：message 为空。"
+                elif not has_staged_changes():
+                    last_title = "commit"
+                    last_output = "没有已暂存改动，未执行 commit。"
                 else:
-                    print("message 为空，已取消。")
-                wait_back_to_menu()
+                    ok, out = run_git_capture_text(["commit", "-m", msg])
+                    last_title = "commit"
+                    last_output = out if ok else f"[ERROR]\n{out}"
             elif choice_idx == 5:
                 clear_screen()
                 print_panel("quickpush")
                 cmd_quickpush(argparse.Namespace())
-                wait_back_to_menu()
+                last_title = "quickpush"
+                _, out = run_git_capture_text(["status", "--short", "--branch"])
+                last_output = "quickpush 已执行。\n" + out
             elif choice_idx == 6:
-                clear_screen()
-                print_panel("pull --rebase")
-                run_git(["pull", "--rebase"])
-                wait_back_to_menu()
+                ok, out = run_git_capture_text(["pull", "--rebase"])
+                last_title = "pull --rebase"
+                last_output = out if ok else f"[ERROR]\n{out}"
             elif choice_idx == 7:
                 clear_screen()
                 print_panel("log --oneline")
                 n = input("显示条数 [20]: ").strip() or "20"
-                run_git(["log", f"-n{n}", "--oneline"])
-                wait_back_to_menu()
+                ok, out = run_git_capture_text(["log", f"-n{n}", "--oneline"])
+                last_title = f"log -n{n} --oneline"
+                last_output = out if ok else f"[ERROR]\n{out}"
             elif choice_idx == 8:
                 clear_screen()
                 print_panel("diff")
                 cached = ask_yes_no("查看 staged diff 吗？", default_no=True)
-                run_git(["diff", "--cached"] if cached else ["diff"])
-                wait_back_to_menu()
+                cmd = ["diff", "--cached"] if cached else ["diff"]
+                ok, out = run_git_capture_text(cmd)
+                last_title = "diff --cached" if cached else "diff"
+                last_output = out if ok else f"[ERROR]\n{out}"
             elif choice_idx == 9:
-                clear_screen()
-                print_panel("stash list")
-                run_git(["stash", "list"])
-                wait_back_to_menu()
+                ok, out = run_git_capture_text(["stash", "list"])
+                last_title = "stash list"
+                last_output = out if ok else f"[ERROR]\n{out}"
             elif choice_idx == 10:
                 clear_screen()
                 print_panel("切换目标仓库")
                 new_repo = input("输入新的仓库路径: ").strip()
                 if not new_repo:
-                    print("已取消。")
-                    wait_back_to_menu()
+                    last_title = "切换目标仓库"
+                    last_output = "已取消。"
                     continue
                 new_repo = os.path.abspath(new_repo)
                 if not os.path.isdir(new_repo):
-                    print(f"[ERROR] 路径不存在或不是目录: {new_repo}")
-                    wait_back_to_menu()
+                    last_title = "切换目标仓库"
+                    last_output = f"[ERROR] 路径不存在或不是目录: {new_repo}"
                     continue
                 if not in_git_repo(new_repo):
-                    print(f"[ERROR] 不是 git 仓库: {new_repo}")
-                    wait_back_to_menu()
+                    last_title = "切换目标仓库"
+                    last_output = f"[ERROR] 不是 git 仓库: {new_repo}"
                     continue
                 root = get_repo_root(new_repo)
                 set_git_cwd(root)
-                print(f"已切换仓库: {root}")
-                wait_back_to_menu()
+                last_title = "切换目标仓库"
+                last_output = f"已切换仓库: {root}"
             elif choice_idx == 11:
                 print("Bye.")
                 return
         except RuntimeError as e:
-            print(f"[ERROR] {e}")
-            wait_back_to_menu()
+            last_title = "执行失败"
+            last_output = str(e)
 
 
 def build_parser() -> argparse.ArgumentParser:
