@@ -250,6 +250,48 @@ def get_upstream() -> Upstream | None:
     return Upstream(remote=remote, branch=branch)
 
 
+@dataclass
+class BranchSyncStatus:
+    branch: str
+    upstream: str | None
+    ahead: int
+    behind: int
+
+
+def get_branch_sync_status() -> BranchSyncStatus:
+    branch = current_branch()
+    upstream = get_upstream()
+    if not upstream:
+        return BranchSyncStatus(branch=branch, upstream=None, ahead=0, behind=0)
+
+    upstream_ref = f"{upstream.remote}/{upstream.branch}"
+    proc = run_git(["rev-list", "--left-right", "--count", f"{upstream_ref}...HEAD"], check=False, capture=True)
+    if proc.returncode != 0:
+        return BranchSyncStatus(branch=branch, upstream=upstream_ref, ahead=0, behind=0)
+    raw = proc.stdout.strip().split()
+    if len(raw) != 2:
+        return BranchSyncStatus(branch=branch, upstream=upstream_ref, ahead=0, behind=0)
+    behind = int(raw[0])
+    ahead = int(raw[1])
+    return BranchSyncStatus(branch=branch, upstream=upstream_ref, ahead=ahead, behind=behind)
+
+
+def has_working_tree_changes() -> bool:
+    proc = run_git(["status", "--porcelain"], capture=True)
+    return bool(proc.stdout.strip())
+
+
+def render_sync_dashboard() -> None:
+    s = get_branch_sync_status()
+    print_panel("仓库状态总览")
+    print(f"当前分支:         {s.branch}")
+    print(f"上游分支:         {s.upstream or '(未设置 upstream)'}")
+    print(f"本地领先(ahead):  {s.ahead}")
+    print(f"本地落后(behind): {s.behind}")
+    print(f"工作区有改动:     {'是' if has_working_tree_changes() else '否'}")
+    print("=" * 56)
+
+
 def get_changed_files() -> List[str]:
     proc = run_git(["status", "--porcelain"], capture=True)
     lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
@@ -434,30 +476,62 @@ def cmd_stash(args: argparse.Namespace) -> None:
 
 def quickpush_flow() -> tuple[bool, str]:
     print("== Quick Push 向导 ==")
-    run_git(["status"])
-    print()
+    render_sync_dashboard()
+    sync = get_branch_sync_status()
+    dirty = has_working_tree_changes()
 
-    mode = input("暂存方式: [1]全部 [2]按文件选择 [3]取消: ").strip()
-    if mode == "1":
-        run_git(["add", "-A"])
-    elif mode == "2":
-        if not stage_interactive():
-            return False, "未暂存任何文件。"
+    if dirty:
+        print("当前有工作区改动，可选操作：")
+        print("  1) 处理改动并推送 (add -> commit -> push)")
+        if sync.ahead > 0:
+            print("  2) 只推送已提交内容 (跳过 add/commit)")
+            print("  3) 取消")
+            mode = input("请选择 [1/2/3]: ").strip()
+        else:
+            print("  2) 取消")
+            mode = input("请选择 [1/2]: ").strip()
+            mode = "3" if mode == "2" else mode
     else:
+        if sync.ahead > 0:
+            print("工作区干净，检测到本地有未推送提交。")
+            print("  1) 立即推送到远程")
+            print("  2) 取消")
+            mode = input("请选择 [1/2]: ").strip()
+            mode = "2" if mode == "2" else "push_only"
+        else:
+            return False, "工作区干净且没有领先提交：当前没有可推送内容。"
+
+    if mode in {"3", ""}:
         return False, "已取消。"
 
-    if run_git(["diff", "--cached", "--quiet"], check=False).returncode == 0:
-        return False, "没有已暂存改动，退出。"
+    created_new_commit = False
+    if mode == "1":
+        stage_mode = input("暂存方式: [1]全部 [2]按文件选择 [3]取消: ").strip()
+        if stage_mode == "1":
+            run_git(["add", "-A"])
+        elif stage_mode == "2":
+            if not stage_interactive():
+                return False, "未暂存任何文件。"
+        else:
+            return False, "已取消。"
 
-    run_git(["diff", "--cached", "--stat"])
-    if not ask_yes_no("确认提交这些改动吗？", default_no=True):
-        return False, "已取消提交。"
+        if not has_staged_changes():
+            if sync.ahead > 0:
+                if not ask_yes_no("没有新的 staged 改动，仅推送已有提交，继续吗？", default_no=False):
+                    return False, "已取消。"
+            else:
+                return False, "没有已暂存改动，退出。"
+        else:
+            run_git(["diff", "--cached", "--stat"])
+            if not ask_yes_no("确认提交这些改动吗？", default_no=True):
+                return False, "已取消提交。"
 
-    msg = normalize_commit_message(input("请输入 commit message: ").strip())
-    if not msg:
-        print("[ERROR] commit message 不能为空。", file=sys.stderr)
-        return False, "[ERROR] commit message 不能为空。"
-    run_git(["commit", "-m", msg])
+            msg = normalize_commit_message(input("请输入 commit message: ").strip())
+            if not msg:
+                print("[ERROR] commit message 不能为空。", file=sys.stderr)
+                return False, "[ERROR] commit message 不能为空。"
+            run_git(["commit", "-m", msg])
+            created_new_commit = True
 
     up = get_upstream()
     br = current_branch()
@@ -471,9 +545,14 @@ def quickpush_flow() -> tuple[bool, str]:
     else:
         push_cmd = ["push", "-u", remote, branch]
 
-    print("将执行:", "git " + " ".join(push_cmd))
-    if not ask_yes_no("确认推送吗？", default_no=False):
-        return False, "已提交到本地，未推送。"
+    print("\n将推送到远程仓库:")
+    print(f"  远程(remote): {remote}")
+    print(f"  分支(branch): {branch}")
+    print("将执行命令: git " + " ".join(push_cmd))
+    if not ask_yes_no("确认推送到远程吗？", default_no=False):
+        if created_new_commit:
+            return False, "已提交到本地，但未推送到远程。"
+        return False, "未执行远程推送。"
 
     proc = run_git(push_cmd, check=False, capture=True)
     out = (proc.stdout or "").strip()
